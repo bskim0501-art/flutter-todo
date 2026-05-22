@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const TodoApp());
@@ -33,6 +35,20 @@ class Todo {
     this.isDone = false,
     required this.createdAt,
   });
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'isDone': isDone,
+        'createdAt': createdAt.toIso8601String(),
+      };
+
+  factory Todo.fromJson(Map<String, dynamic> json) => Todo(
+        id: json['id'] as String,
+        title: json['title'] as String,
+        isDone: json['isDone'] as bool,
+        createdAt: DateTime.parse(json['createdAt'] as String),
+      );
 }
 
 class TodoListPage extends StatefulWidget {
@@ -46,6 +62,32 @@ class _TodoListPageState extends State<TodoListPage> {
   final List<Todo> _todos = [];
   final TextEditingController _controller = TextEditingController();
   String _filter = 'all'; // 'all', 'active', 'done'
+  static const _storageKey = 'todos';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTodos();
+  }
+
+  Future<void> _loadTodos() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_storageKey);
+    if (raw == null) return;
+    final list = (jsonDecode(raw) as List)
+        .map((e) => Todo.fromJson(e as Map<String, dynamic>))
+        .toList();
+    setState(() {
+      _todos
+        ..clear()
+        ..addAll(list);
+    });
+  }
+
+  Future<void> _saveTodos() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_storageKey, jsonEncode(_todos.map((t) => t.toJson()).toList()));
+  }
 
   List<Todo> get _filteredTodos {
     switch (_filter) {
@@ -74,18 +116,21 @@ class _TodoListPageState extends State<TodoListPage> {
       );
     });
     _controller.clear();
+    _saveTodos();
   }
 
   void _toggleTodo(Todo todo) {
     setState(() {
       todo.isDone = !todo.isDone;
     });
+    _saveTodos();
   }
 
   void _deleteTodo(Todo todo) {
     setState(() {
       _todos.removeWhere((t) => t.id == todo.id);
     });
+    _saveTodos();
   }
 
   void _editTodo(Todo todo) {
@@ -126,12 +171,14 @@ class _TodoListPageState extends State<TodoListPage> {
     setState(() {
       todo.title = text;
     });
+    _saveTodos();
   }
 
   void _clearDone() {
     setState(() {
       _todos.removeWhere((t) => t.isDone);
     });
+    _saveTodos();
   }
 
   @override
